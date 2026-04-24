@@ -1,0 +1,41 @@
+# Data + results (can be huge)
+data/
+results/
+logs/
+*.tar
+*.tar.gz
+*.zip
+*.tfrecord
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.h5
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+hf_token*
+docker_token*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Docker build context leftovers
+**/*.log

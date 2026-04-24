@@ -1,0 +1,13 @@
+data/
+results/
+logs/
+.git/
+.github/
+*.md
+*.tar
+*.tar.gz
+*.zip
+__pycache__/
+.venv/
+venv/
+.env*
