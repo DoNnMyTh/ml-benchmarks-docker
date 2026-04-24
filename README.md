@@ -59,18 +59,7 @@ ml-benchmarks-docker/
 - `bash` (Git Bash works on Windows)
 - `curl`, `tar`
 
-### Important: move Docker data to a non-C: drive (Windows)
-These images + datasets are big. Docker Desktop defaults to `C:\ProgramData\Docker` or the WSL `ext4.vhdx` under `%LOCALAPPDATA%\Docker`. To avoid filling C::
-
-1. Quit Docker Desktop.
-2. Docker Desktop → **Settings → Resources → Advanced → Disk image location** → move to e.g. `E:\docker`.
-3. Apply & Restart.
-4. (Optional, WSL) `wsl --shutdown` then `wsl --export` / `--import` the `docker-desktop-data` distro to an E: path.
-
-Also a good idea before starting heavy downloads:
-```bash
-docker system prune -af --volumes
-```
+Budget ~40GB of Docker image layer space plus whichever datasets you stage (see each benchmark section below).
 
 ---
 
