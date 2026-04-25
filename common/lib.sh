@@ -48,16 +48,29 @@ check_docker() {
   fi
 }
 
-# Build image if missing. $1=tag (e.g. resnet50), $2=context dir
+# Ensure image present. $1=tag, $2=context dir.
+# Order: cached → docker pull from Hub → local build fallback.
+# Skip pull with NO_PULL=1, force build with FORCE_BUILD=1.
 ensure_image() {
   local tag="$1" ctx="$2"
   local full="${DOCKER_USER}/${DOCKER_REPO}:${tag}"
-  if ! docker image inspect "$full" >/dev/null 2>&1; then
-    log "Image $full not found locally. Building from $ctx ..."
-    docker build -t "$full" "$ctx"
-  else
+
+  if [[ "${FORCE_BUILD:-0}" != "1" ]] && docker image inspect "$full" >/dev/null 2>&1; then
     log "Using cached image $full"
+    return
   fi
+
+  if [[ "${FORCE_BUILD:-0}" != "1" ]] && [[ "${NO_PULL:-0}" != "1" ]]; then
+    log "Pulling $full from Docker Hub ..."
+    if docker pull "$full" 2>/dev/null; then
+      log "Pulled $full"
+      return
+    fi
+    warn "Pull failed (image may not be published or no network). Falling back to local build."
+  fi
+
+  log "Building $full from $ctx ..."
+  docker build -t "$full" "$ctx"
 }
 
 # Common docker run flags for a benchmark container.

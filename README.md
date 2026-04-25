@@ -10,10 +10,27 @@ Dockerized, end-to-end runners for three ML benchmarks, designed to run on a mul
 
 Each benchmark has:
 - its own Dockerfile under `docker/<name>/`,
-- an end-to-end runner under `scripts/run_<name>.sh` (build → data stage → run → collect),
-- published image as `donnmyth/ml-benchmarks:<name>` on Docker Hub.
+- an end-to-end runner under `scripts/run_<name>.sh` (pull/build → data stage → run → collect),
+- a pre-built image published to Docker Hub.
 
-Docker Hub: https://hub.docker.com/r/donnmyth/ml-benchmarks/tags
+### Pre-built images (Docker Hub)
+
+You **don't need to build locally** — `run_*.sh` will `docker pull` these on first use.
+
+| Image | Tag | Compressed size | Digest |
+|---|---|---|---|
+| `donnmyth/ml-benchmarks` | `resnet50` | ~3.7 GB | `sha256:6b4361ae0443…dbee8` |
+| `donnmyth/ml-benchmarks` | `cosmoflow` | ~3.0 GB | `sha256:dce02265e19b…3ff2b` |
+| `donnmyth/ml-benchmarks` | `bert-squad` | ~3.7 GB | `sha256:f57a05e4e772…01c4b` |
+
+Browse: https://hub.docker.com/r/donnmyth/ml-benchmarks/tags
+
+Direct pull:
+```bash
+docker pull donnmyth/ml-benchmarks:resnet50
+docker pull donnmyth/ml-benchmarks:cosmoflow
+docker pull donnmyth/ml-benchmarks:bert-squad
+```
 
 ---
 
@@ -66,23 +83,21 @@ Budget ~40GB of Docker image layer space plus whichever datasets you stage (see 
 ## One-time setup
 
 ```bash
-git clone https://github.com/<you>/ml-benchmarks-docker.git
+git clone https://github.com/DoNnMyTh/ml-benchmarks-docker.git
 cd ml-benchmarks-docker
 cp .env.example .env
 # edit .env — add HF_TOKEN (for ImageNet + HF caches) if using ImageNet-1k
 ```
 
-Build all images (or pull from Docker Hub on first run — scripts auto-build if missing):
+That's it. Run any `scripts/run_*.sh` and it will `docker pull` the matching `donnmyth/ml-benchmarks:<tag>` from Docker Hub on first use, then reuse the cached image.
+
+### Optional: build from source
+
+Only needed if you modified the Dockerfile / entrypoint:
 
 ```bash
-./scripts/build_images.sh all
-# or per-benchmark: ./scripts/build_images.sh resnet50
-```
-
-Push to Docker Hub (requires prior `docker login`):
-
-```bash
-./scripts/push_images.sh all
+./scripts/build_images.sh all          # or resnet50 | cosmoflow | bert-squad
+./scripts/push_images.sh all           # requires prior `docker login`
 ```
 
 ---
