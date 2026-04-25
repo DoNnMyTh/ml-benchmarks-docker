@@ -96,7 +96,11 @@ docker_run() {
   local env_flags=()
   [[ -n "${HF_TOKEN:-}" ]] && env_flags+=(-e "HF_TOKEN=${HF_TOKEN}" -e "HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}")
 
-  docker run --rm -it \
+  local tty_flag=()
+  [[ -t 0 ]] && tty_flag=(-it)
+  # MSYS_NO_PATHCONV=1: prevent Git Bash from mangling `/data` and `/results`
+  # container paths into `C:\Program Files\Git\data` etc.
+  MSYS_NO_PATHCONV=1 docker run --rm "${tty_flag[@]}" \
     "${gpu_flag[@]}" \
     --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
     -v "${DATA_DIR}:/data" \

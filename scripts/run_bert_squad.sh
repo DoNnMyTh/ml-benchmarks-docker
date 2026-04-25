@@ -30,7 +30,7 @@ while [[ $i -lt ${#EXTRA[@]} ]]; do
     *) NEW_EXTRA+=("${EXTRA[$i]}"); i=$((i+1)) ;;
   esac
 done
-EXTRA=("${NEW_EXTRA[@]:-}")
+if [[ ${#NEW_EXTRA[@]} -gt 0 ]]; then EXTRA=("${NEW_EXTRA[@]}"); else EXTRA=(); fi
 
 log "BERT-SQuAD2: mode=$MODE impl=$IMPL"
 

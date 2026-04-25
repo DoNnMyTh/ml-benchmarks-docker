@@ -140,6 +140,52 @@ Upstream: https://huggingface.co/microsoft/resnet-50
 4. Put it in `.env` as `HF_TOKEN=hf_xxx`
 5. Run `./scripts/download_data.sh imagenet` (downloads ~150GB to `data/imagenet/`)
 
+#### Bring your own ImageNet data (skip download)
+
+The runner auto-detects pre-staged data and **skips downloading** entirely.
+Place files under `data/imagenet/` in one of these two layouts:
+
+**A. ImageFolder (preferred — used directly, no conversion):**
+```
+data/imagenet/
+├── train/
+│   ├── n01440764/
+│   │   ├── n01440764_10026.JPEG
+│   │   └── ...
+│   └── ... (1000 wnid dirs)
+└── val/
+    ├── n01440764/
+    │   └── ILSVRC2012_val_00000293.JPEG
+    └── ... (1000 wnid dirs)
+```
+Run: `./scripts/run_resnet50.sh --mode full --dataset imagenet` — the
+download step is skipped automatically once `train/` and `val/` both exist.
+
+**B. ILSVRC2012 / Kaggle layout (auto-converted in-place via hardlinks):**
+```
+data/imagenet/
+├── Data/CLS-LOC/
+│   ├── train/<wnid>/*.JPEG          # already class-foldered
+│   └── val/ILSVRC2012_val_*.JPEG    # 50k flat files
+└── Annotations/CLS-LOC/val/
+    └── ILSVRC2012_val_*.xml         # provides class labels for val
+```
+This is what you get from the Kaggle "ImageNet Object Localization Challenge"
+download or a stock ILSVRC2012 archive. On first run, the script detects it
+and calls `scripts/prepare_imagenet.sh`, which creates `train/` and `val/`
+ImageFolder views via **hardlinks** (same volume, ~0 extra bytes, instant).
+
+You can also run the converter manually any time:
+```bash
+./scripts/prepare_imagenet.sh
+```
+
+**Why hardlinks and not Windows junctions / symlinks:** Docker Desktop bind
+mounts on Windows do **not** follow NTFS junctions or reparse-point symlinks
+into the container — they appear as broken links pointing at `/mnt/host/...`
+which isn't visible inside. Hardlinks are real directory entries, so they
+work transparently.
+
 Fallback paths:
 - **ImageNette** (`--dataset imagenette`): 10-class 1.5GB subset for quick sanity runs.
 - **Academic Torrents**: set `IMAGENET_SRC=torrent` and follow the hint printed by `download_data.sh`.
@@ -173,6 +219,22 @@ Notes:
 - Dataset URL overridable via `COSMOFLOW_URL` env.
 - `--impl pytorch` is a stub — to enable, fork this repo and set `CF_PYTORCH_REPO` in the Dockerfile to a community port.
 
+#### Bring your own CosmoFlow data (skip download)
+
+The runner auto-detects pre-staged data and **skips downloading** entirely.
+
+**A. Already extracted:**
+Drop your TFRecord tree under `data/cosmoflow/` (any non-empty layout the
+upstream `train.py` accepts — usually `train/`, `val/`, plus YAML manifests).
+Run `./scripts/run_cosmoflow.sh --mode full` — the download is skipped because
+`data/cosmoflow/` is non-empty.
+
+**B. Tarball not yet extracted:**
+Drop the archive at `data/cosmoflow/cosmoUniverse*.tar` (or any `*.tar`,
+`*.tar.gz`, `*.tgz`). On first run `download_data.sh cosmoflow` will detect
+the tarball, extract it in place, delete the archive, and skip the network
+download.
+
 ---
 
 ### 3. BERT-base-uncased / SQuAD 2.0
@@ -191,6 +253,22 @@ Upstream models: https://huggingface.co/bert-base-uncased · https://huggingface
 ```
 
 Data: downloads SQuAD v2 on first run via `datasets.load_dataset("squad_v2")` into `data/squad/` (~50MB). No account needed.
+
+#### Bring your own SQuAD data (skip download)
+
+The entrypoint checks `data/squad/` for an HF datasets cache (any
+`dataset_info.json` under the dir). If found, it loads from disk and skips
+the hub fetch. To pre-stage offline:
+
+```bash
+./scripts/download_data.sh squad   # prints a one-liner you can run
+# or directly:
+docker run --rm -v "$(pwd)/data/squad:/cache" python:3.11-slim bash -c \
+  'pip install -q datasets && python -c "from datasets import load_dataset; load_dataset(\"squad_v2\", cache_dir=\"/cache\")"'
+```
+
+After that, `./scripts/run_bert_squad.sh --mode full` runs offline with no
+network calls for data.
 
 Expected targets (full training):
 - F1 ≈ 74–76, EM ≈ 71–73 on SQuAD v2 dev set.
@@ -223,6 +301,7 @@ Override GPU count: `--gpus 2` or `NUM_GPUS=2 ./scripts/run_*.sh`.
 | `HF_TOKEN missing` | Put token in `.env`, or `export HF_TOKEN=...` before running |
 | Out-of-memory on RTX 4080 | Drop batch size: `./scripts/run_resnet50.sh --mode quick --batch-size 32` (via `EXTRA` forwarding) |
 | `ImageNet already staged` but empty | Delete `data/imagenet/` and retry; HF extraction step may have partial state |
+| ResNet50 errors `Expected /data/imagenet/{train,val} to exist` despite a `train` symlink/junction | NTFS junctions aren't followed by Docker Desktop bind mounts. Run `./scripts/prepare_imagenet.sh` to materialize `train/` and `val/` as hardlinks. |
 | CosmoFlow `config.yaml not found` | Upstream repo layout changed. Rebuild image (`./scripts/build_images.sh cosmoflow`) to pick up latest `mlcommons/hpc` main |
 | Container GPU test fails on first build | Run a warm-up: `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi` |
 

@@ -26,6 +26,13 @@ imagenet() {
     return
   fi
 
+  # User-supplied data: detect Kaggle/ILSVRC2012 layout and convert in-place.
+  if [[ -d "$out/Data/CLS-LOC/train" ]] && [[ -d "$out/Annotations/CLS-LOC/val" ]]; then
+    log "Detected ILSVRC2012/Kaggle layout at $out — converting to ImageFolder via hardlinks (no extra disk, no download)."
+    "$HERE/prepare_imagenet.sh"
+    return
+  fi
+
   warn "ImageNet-1k is ~150GB. Ensure E: has that free."
   confirm "Proceed with download to $out ?" || die "Aborted."
 
@@ -34,7 +41,7 @@ imagenet() {
     hf)
       [[ -z "${HF_TOKEN:-}" ]] && die "HF_TOKEN missing. Get at huggingface.co/settings/tokens, then accept terms at https://huggingface.co/datasets/ILSVRC/imagenet-1k and set HF_TOKEN in .env"
       log "Downloading ImageNet-1k via HuggingFace (gated; terms acceptance required)..."
-      docker run --rm -it \
+      MSYS_NO_PATHCONV=1 docker run --rm -it \
         -v "${out}:/out" \
         -e "HF_TOKEN=${HF_TOKEN}" \
         -e "HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}" \
@@ -94,8 +101,19 @@ imagenette() {
 cosmoflow() {
   local out="${DATA_DIR}/cosmoflow"
   mkdir -p "$out"
+
+  # User-supplied tarball: auto-extract and skip download.
+  local tarballs=( "$out"/*.tar "$out"/*.tar.gz "$out"/*.tgz )
+  for tb in "${tarballs[@]}"; do
+    [[ -f "$tb" ]] || continue
+    log "Found user-supplied tarball $tb — extracting in place."
+    tar -xf "$tb" -C "$out"
+    rm "$tb"
+    break
+  done
+
   if [[ -n "$(ls -A "$out" 2>/dev/null || true)" ]]; then
-    log "CosmoFlow dir non-empty: $out (skipping)"; return
+    log "CosmoFlow dir non-empty: $out (skipping download)"; return
   fi
   warn "CosmoFlow mini dataset is ~100GB."
   confirm "Proceed with download to $out ?" || die "Aborted."
