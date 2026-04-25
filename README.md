@@ -143,6 +143,8 @@ Upstream: https://huggingface.co/microsoft/resnet-50
 Fallback paths:
 - **ImageNette** (`--dataset imagenette`): 10-class 1.5GB subset for quick sanity runs.
 - **Academic Torrents**: set `IMAGENET_SRC=torrent` and follow the hint printed by `download_data.sh`.
+- **Self-hosted FTP/FTPS/SFTP**: if you've staged ImageNet on your own server, run
+  `./scripts/download_imagenet_ftp.sh` — interactive prompt for host/port/user/password/remote path/local dest. Resumable, parallel via `lftp`. Useful for one-time pull from your home box to the H100 box without re-downloading from HF.
 
 Expected targets (full mode):
 - HF impl: follows fine-tune schedule on pretrained weights → ~76% top-1 in ~5 epochs
