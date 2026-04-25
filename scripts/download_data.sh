@@ -97,7 +97,9 @@ imagenette() {
   log "ImageNette ready at $out"
 }
 
-# ===== CosmoFlow mini (~100GB) =====
+# ===== CosmoFlow (mini ~6GB tar, or full preprocessed v2 ~1.68TB tar) =====
+# Variant controlled by COSMOFLOW_VARIANT={mini,full} env, else interactive prompt.
+# Custom URL via COSMOFLOW_URL env (overrides variant choice).
 cosmoflow() {
   local out="${DATA_DIR}/cosmoflow"
   mkdir -p "$out"
@@ -115,16 +117,50 @@ cosmoflow() {
   if [[ -n "$(ls -A "$out" 2>/dev/null || true)" ]]; then
     log "CosmoFlow dir non-empty: $out (skipping download)"; return
   fi
-  warn "CosmoFlow mini dataset is ~100GB."
+
+  local base="https://portal.nersc.gov/project/dasrepo/cosmoflow-benchmark"
+  local variant="${COSMOFLOW_VARIANT:-}"
+  if [[ -z "$variant" ]] && [[ -z "${COSMOFLOW_URL:-}" ]]; then
+    echo
+    echo "CosmoFlow dataset variants (NERSC public HTTPS):"
+    echo "  1) mini  — cosmoUniverse_2019_05_4parE_tf_v2_mini.tar  (~6 GB, 32 train + 32 val)"
+    echo "             Smoke / throughput runs. Won't reach MLPerf accuracy target."
+    echo "  2) full  — cosmoUniverse_2019_05_4parE_tf_v2.tar       (~1.68 TB, MLPerf HPC reference)"
+    echo "             Need ≥2 TB free (download stored as tar then extracted) or use stream mode."
+    read -r -p "Choose [1=mini / 2=full] (default 1): " ans
+    case "$ans" in
+      2|full|FULL) variant="full" ;;
+      *) variant="mini" ;;
+    esac
+  fi
+
+  local url size_label
+  if [[ -n "${COSMOFLOW_URL:-}" ]]; then
+    url="$COSMOFLOW_URL"; size_label="custom"
+  elif [[ "$variant" == "full" ]]; then
+    url="$base/cosmoUniverse_2019_05_4parE_tf_v2.tar"; size_label="~1.68TB"
+  else
+    url="$base/cosmoUniverse_2019_05_4parE_tf_v2_mini.tar"; size_label="~6GB"
+  fi
+
+  warn "Downloading CosmoFlow $variant ($size_label) from $url"
+  if [[ "$variant" == "full" ]]; then
+    warn "Full set is 1.68 TB. Peak disk during extract is ~3.4 TB (tar + extracted)"
+    warn "unless you stream-extract: COSMOFLOW_STREAM=1 (pipes curl into tar, no .tar saved)."
+  fi
   confirm "Proceed with download to $out ?" || die "Aborted."
 
-  # NERSC-hosted mini dataset (public).
-  local url="${COSMOFLOW_URL:-https://portal.nersc.gov/project/m3363/cosmoUniverse_2019_05_4parE_tf_v2_mini.tar}"
-  log "Downloading CosmoFlow mini from $url ..."
-  curl -L "$url" -o "$out/cosmoflow_mini.tar"
-  log "Extracting ..."
-  tar -xf "$out/cosmoflow_mini.tar" -C "$out"
-  rm "$out/cosmoflow_mini.tar"
+  if [[ "${COSMOFLOW_STREAM:-0}" == "1" ]]; then
+    log "Streaming download → tar extract (no intermediate file) ..."
+    curl -L --fail "$url" | tar -xf - -C "$out"
+  else
+    local tar_path="$out/cosmoflow_$variant.tar"
+    log "Downloading to $tar_path (resumable; re-run to continue partial)"
+    curl -L --fail -C - "$url" -o "$tar_path"
+    log "Extracting $tar_path ..."
+    tar -xf "$tar_path" -C "$out"
+    rm "$tar_path"
+  fi
   log "CosmoFlow data ready at $out"
 }
 

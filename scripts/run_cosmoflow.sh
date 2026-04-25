@@ -35,7 +35,7 @@ log "CosmoFlow: mode=$MODE impl=$IMPL"
 
 if [[ "$SKIP_DATA" -eq 0 ]]; then
   if [[ ! -d "${DATA_DIR}/cosmoflow" ]] || [[ -z "$(ls -A "${DATA_DIR}/cosmoflow" 2>/dev/null || true)" ]]; then
-    warn "CosmoFlow data not found at ${DATA_DIR}/cosmoflow (~100GB mini)."
+    warn "CosmoFlow data not found at ${DATA_DIR}/cosmoflow (~6GB mini tar)."
     confirm "Run downloader now?" && "$HERE/download_data.sh" cosmoflow || die "Aborted — no data."
   fi
 fi

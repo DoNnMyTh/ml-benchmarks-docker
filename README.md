@@ -5,7 +5,7 @@ Dockerized, end-to-end runners for three ML benchmarks, designed to run on a mul
 | Benchmark | Framework | Model / Upstream | Dataset |
 |-----------|-----------|------------------|---------|
 | **ResNet50 / ImageNet-1k** | PyTorch (HF Transformers or torchvision) | [microsoft/resnet-50](https://huggingface.co/microsoft/resnet-50) | ImageNet-1k (ILSVRC2012) |
-| **CosmoFlow** | TensorFlow (MLCommons HPC ref) | [mlcommons/hpc/cosmoflow](https://github.com/mlcommons/hpc/tree/main/cosmoflow) | CosmoFlow mini (~100GB) |
+| **CosmoFlow** | TensorFlow (MLCommons HPC ref) | [mlcommons/hpc/cosmoflow](https://github.com/mlcommons/hpc/tree/main/cosmoflow) | CosmoFlow mini (~6GB) |
 | **BERT-base / SQuAD 2.0** | PyTorch (HF Transformers) | [bert-base-uncased](https://huggingface.co/bert-base-uncased) / [deepset/bert-base-uncased-squad2](https://huggingface.co/deepset/bert-base-uncased-squad2) | SQuAD v2 |
 
 Each benchmark has:
@@ -66,7 +66,7 @@ ml-benchmarks-docker/
 - NVIDIA GPU (anything Ampere+ recommended; tested on H100 and RTX 4080)
 - Enough disk for datasets:
   - ImageNet-1k: **~150 GB**
-  - CosmoFlow mini: **~100 GB**
+  - CosmoFlow mini: **~6 GB** (full TFRecord set is ~5 TB via Globus — out of scope here)
   - SQuAD v2: ~50 MB
 
 ### Software
@@ -203,7 +203,7 @@ Expected targets (full mode):
 Upstream: https://github.com/mlcommons/hpc/tree/main/cosmoflow
 
 ```bash
-# Stage data (~100GB, downloads from NERSC public portal):
+# Stage data (~6GB mini tar, downloads from NERSC public portal):
 ./scripts/download_data.sh cosmoflow
 
 # Quick 2-epoch sanity:
@@ -234,6 +234,23 @@ Drop the archive at `data/cosmoflow/cosmoUniverse*.tar` (or any `*.tar`,
 `*.tar.gz`, `*.tgz`). On first run `download_data.sh cosmoflow` will detect
 the tarball, extract it in place, delete the archive, and skip the network
 download.
+
+**C. Choose mini vs full at download time:**
+`./scripts/download_data.sh cosmoflow` prompts for variant:
+
+| Variant | File | Size | Use |
+|---|---|---|---|
+| mini | `cosmoUniverse_2019_05_4parE_tf_v2_mini.tar` | ~6 GB | smoke + throughput |
+| full | `cosmoUniverse_2019_05_4parE_tf_v2.tar` | ~1.68 TB | MLPerf HPC reference |
+
+Non-interactive: `COSMOFLOW_VARIANT=full ./scripts/download_data.sh cosmoflow`.
+
+The full tar needs ~3.4 TB peak disk (tar + extracted side-by-side). To skip
+the intermediate file and pipe `curl` straight into `tar -x`, set
+`COSMOFLOW_STREAM=1` — needs ~1.68 TB free instead. Stream mode is **not
+resumable**; non-stream download is (`curl -C -` continues partial file).
+
+Custom URL: `COSMOFLOW_URL=https://your.host/path.tar ./scripts/download_data.sh cosmoflow`.
 
 ---
 
