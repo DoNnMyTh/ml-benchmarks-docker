@@ -22,7 +22,11 @@ RUN pip install --no-cache-dir \
       "pyyaml" \
       "h5py" \
       "pandas" \
-      "tensorboard"
+      "tensorboard" \
+      "wandb"
+
+# Disable wandb network calls by default (offline run); user can override at runtime.
+ENV WANDB_MODE=disabled WANDB_DISABLED=true
 
 COPY entrypoint.sh /workspace/entrypoint.sh
 RUN chmod +x /workspace/entrypoint.sh

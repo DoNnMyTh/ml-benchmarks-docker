@@ -150,15 +150,18 @@ cosmoflow() {
   fi
   confirm "Proceed with download to $out ?" || die "Aborted."
 
+  # Tar contains a top-level wrapper dir (cosmoUniverse_2019_05_4parE_tf_v2*).
+  # The MLCommons train.py expects {train,validation}/ directly under data dir,
+  # so strip the wrapper on extract.
   if [[ "${COSMOFLOW_STREAM:-0}" == "1" ]]; then
-    log "Streaming download → tar extract (no intermediate file) ..."
-    curl -L --fail "$url" | tar -xf - -C "$out"
+    log "Streaming download -> tar extract (no intermediate file) ..."
+    curl -L --fail "$url" | tar -xf - --strip-components=1 -C "$out"
   else
     local tar_path="$out/cosmoflow_$variant.tar"
     log "Downloading to $tar_path (resumable; re-run to continue partial)"
     curl -L --fail -C - "$url" -o "$tar_path"
-    log "Extracting $tar_path ..."
-    tar -xf "$tar_path" -C "$out"
+    log "Extracting $tar_path (strip wrapper dir) ..."
+    tar -xf "$tar_path" --strip-components=1 -C "$out"
     rm "$tar_path"
   fi
   log "CosmoFlow data ready at $out"
