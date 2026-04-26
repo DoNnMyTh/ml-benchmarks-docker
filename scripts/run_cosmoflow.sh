@@ -34,9 +34,20 @@ if [[ ${#NEW_EXTRA[@]} -gt 0 ]]; then EXTRA=("${NEW_EXTRA[@]}"); else EXTRA=(); 
 log "CosmoFlow: mode=$MODE impl=$IMPL"
 
 if [[ "$SKIP_DATA" -eq 0 ]]; then
-  if [[ ! -d "${DATA_DIR}/cosmoflow" ]] || [[ -z "$(ls -A "${DATA_DIR}/cosmoflow" 2>/dev/null || true)" ]]; then
-    warn "CosmoFlow data not found at ${DATA_DIR}/cosmoflow (~6GB mini tar)."
+  cf_dir="${DATA_DIR}/cosmoflow"
+  if [[ ! -d "$cf_dir" ]] || [[ -z "$(ls -A "$cf_dir" 2>/dev/null || true)" ]]; then
+    warn "CosmoFlow data not found at ${cf_dir} (~6GB mini tar)."
     confirm "Run downloader now?" && "$HERE/download_data.sh" cosmoflow || die "Aborted — no data."
+  fi
+  # Auto-flatten wrapper dir from older extracts (tar without --strip-components=1).
+  # Upstream train.py expects {train,validation}/ directly under data_dir, not
+  # data_dir/cosmoUniverse_2019_05_4parE_tf_v2*/{train,validation}/.
+  if [[ ! -d "$cf_dir/train" ]] || [[ ! -d "$cf_dir/validation" ]]; then
+    wrapper="$(find "$cf_dir" -maxdepth 1 -mindepth 1 -type d -name 'cosmoUniverse_*' 2>/dev/null | head -1)"
+    if [[ -n "$wrapper" ]] && [[ -d "$wrapper/train" ]] && [[ -d "$wrapper/validation" ]]; then
+      log "Flattening wrapper dir $wrapper -> $cf_dir (one-time, mv only)"
+      mv "$wrapper"/* "$cf_dir/" && rmdir "$wrapper"
+    fi
   fi
 fi
 

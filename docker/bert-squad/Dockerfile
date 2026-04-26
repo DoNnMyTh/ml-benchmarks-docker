@@ -7,8 +7,9 @@ FROM nvcr.io/nvidia/pytorch:24.10-py3
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    HF_HOME=/data/.hf_cache \
-    TRANSFORMERS_CACHE=/data/.hf_cache
+    HF_HOME=/tmp/hf \
+    HF_DATASETS_CACHE=/tmp/hf/datasets \
+    TRANSFORMERS_CACHE=/tmp/hf/transformers
 
 WORKDIR /workspace
 
