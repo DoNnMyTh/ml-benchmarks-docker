@@ -66,8 +66,23 @@ case "$MODE" in
     COMMON_ARGS+=("--n-epochs" "2" "--n-train" "512" "--n-valid" "64")
     ;;
   full)
-    # Use config defaults (MLPerf HPC target).
-    :
+    # Canonical MLPerf HPC config wants 524288 train + 65536 val files
+    # (= full ~1.68TB dataset). If only mini set is staged (~6GB / 1024+128
+    # files), the upstream config triggers AssertionError. Auto-cap to
+    # actual file count so full schedule runs as a throughput benchmark
+    # even on mini data — accuracy target won't be reached but timing is.
+    n_tr=$(find "$DATA_DIR/train" -maxdepth 2 \
+             \( -name '*.tfrecord' -o -name '*.tfrecord.gz' -o -name '*.tfrecords' \) \
+             2>/dev/null | wc -l)
+    n_va=$(find "$DATA_DIR/validation" -maxdepth 2 \
+             \( -name '*.tfrecord' -o -name '*.tfrecord.gz' -o -name '*.tfrecords' \) \
+             2>/dev/null | wc -l)
+    if [[ "$n_tr" -lt 524288 ]] || [[ "$n_va" -lt 65536 ]]; then
+      echo "[WARN] mini dataset detected: $n_tr train + $n_va val files."
+      echo "[WARN] capping --n-train/--n-valid to available; MLPerf accuracy target won't be hit."
+      echo "[WARN] for canonical run, stage full ~1.68TB set: COSMOFLOW_VARIANT=full ./scripts/download_data.sh cosmoflow"
+      COMMON_ARGS+=("--n-train" "$n_tr" "--n-valid" "$n_va")
+    fi
     ;;
   *) echo "[ERR] --mode must be quick|full"; exit 1 ;;
 esac
