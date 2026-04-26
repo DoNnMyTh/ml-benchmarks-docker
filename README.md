@@ -20,7 +20,7 @@ You **don't need to build locally** — `run_*.sh` will `docker pull` these on f
 | Image | Tag | Compressed size | Digest |
 |---|---|---|---|
 | `donnmyth/ml-benchmarks` | `resnet50` | ~3.7 GB | `sha256:6b4361ae0443…dbee8` |
-| `donnmyth/ml-benchmarks` | `cosmoflow` | ~3.0 GB | `sha256:dce02265e19b…3ff2b` |
+| `donnmyth/ml-benchmarks` | `cosmoflow` | ~8.8 GB | `sha256:af24c821cf96…7a383` |
 | `donnmyth/ml-benchmarks` | `bert-squad` | ~3.7 GB | `sha256:f57a05e4e772…01c4b` |
 
 Browse: https://hub.docker.com/r/donnmyth/ml-benchmarks/tags
