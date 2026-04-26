@@ -98,8 +98,22 @@ docker_run() {
 
   local tty_flag=()
   [[ -t 0 ]] && tty_flag=(-it)
+
+  # Save run metadata (cmd, image, args) so failed runs are still diagnosable.
+  {
+    echo "image: $full"
+    echo "tag: $tag"
+    echo "args: $*"
+    echo "started: $(date -Iseconds)"
+    echo "host: $(hostname 2>/dev/null || echo unknown)"
+    echo "gpus: $gpus"
+  } > "${out_dir}/run.meta"
+
   # MSYS_NO_PATHCONV=1: prevent Git Bash from mangling `/data` and `/results`
   # container paths into `C:\Program Files\Git\data` etc.
+  # PYTHONUNBUFFERED=1: belt-and-suspenders so log lines flush even if Dockerfile
+  # ENV is overridden or python -u not used. Lets us see why runs die early.
+  set +e
   MSYS_NO_PATHCONV=1 docker run --rm "${tty_flag[@]}" \
     "${gpu_flag[@]}" \
     --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
@@ -107,7 +121,23 @@ docker_run() {
     -v "${out_dir}:/results" \
     "${env_flags[@]}" \
     -e "NUM_GPUS=${gpus}" \
+    -e "PYTHONUNBUFFERED=1" \
     "$full" "$@" 2>&1 | tee "${out_dir}/run.log"
+  local rc=${PIPESTATUS[0]}
+  set -e
+
+  {
+    echo "exit_code: $rc"
+    echo "ended: $(date -Iseconds)"
+  } >> "${out_dir}/run.meta"
+
+  if [[ "$rc" -eq 0 ]]; then
+    log "Container exited 0 → results in $out_dir"
+  else
+    err "Container exited $rc — partial output (if any) in $out_dir"
+    err "Common causes: 137=OOM-killed, 130=Ctrl+C, 1=python traceback (see end of run.log)"
+  fi
+  return $rc
 }
 
 # Confirm before destructive or long-running op.

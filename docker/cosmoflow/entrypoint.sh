@@ -21,6 +21,25 @@ done
 
 mkdir -p "$RESULTS_DIR"
 
+# Status JSON written at start, updated on exit (any reason).
+# Lets host see WHY a run produced no checkpoints — interrupted, failed, etc.
+write_status() {
+  cat > "$RESULTS_DIR/status.json" <<JSON
+{
+  "status": "$1",
+  "exit_code": ${2:-null},
+  "mode": "$MODE",
+  "impl": "$IMPL",
+  "ngpu": ${NGPU:-0},
+  "started": "$STARTED",
+  "ended": "$(date -Iseconds)"
+}
+JSON
+}
+STARTED="$(date -Iseconds)"
+trap 'rc=$?; write_status "$([[ $rc -eq 0 ]] && echo completed || ([[ $rc -eq 130 ]] && echo interrupted || echo failed))" "$rc"' EXIT
+write_status "starting" "null"
+
 if [[ ! -d "$DATA_DIR" ]] || [[ -z "$(ls -A "$DATA_DIR" 2>/dev/null || true)" ]]; then
   echo "[ERR] Cosmoflow data not found at $DATA_DIR."
   echo "      Run scripts/download_data.sh cosmoflow from the host."

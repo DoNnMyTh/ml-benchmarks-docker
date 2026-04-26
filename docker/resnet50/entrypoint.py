@@ -147,14 +147,33 @@ def run_hf(args, data_dir: Path):
         compute_metrics=compute_metrics,
     )
 
-    t0 = time.time()
-    trainer.train()
-    train_s = time.time() - t0
+    metrics = {"status": "starting", "impl": "hf", "dataset": args.dataset,
+               "gpus": num_gpus, "epochs": epochs, "max_steps": max_steps}
+    _save = lambda: Path(args.results_dir, "metrics.json").write_text(json.dumps(metrics, indent=2))
+    _save()  # write skeleton so dir is non-empty even if next step crashes
 
-    metrics = trainer.evaluate()
-    metrics["train_seconds"] = train_s
-    Path(args.results_dir, "metrics.json").write_text(json.dumps(metrics, indent=2))
-    print("[DONE]", json.dumps(metrics, indent=2))
+    t0 = time.time()
+    try:
+        trainer.train()
+        metrics["status"] = "trained"
+        metrics["train_seconds"] = time.time() - t0
+        _save()
+        eval_metrics = trainer.evaluate()
+        metrics.update(eval_metrics)
+        metrics["status"] = "completed"
+    except KeyboardInterrupt:
+        metrics["status"] = "interrupted"
+        metrics["train_seconds"] = time.time() - t0
+        print("[WARN] interrupted — saving partial metrics", flush=True)
+    except Exception as e:
+        metrics["status"] = "failed"
+        metrics["error"] = repr(e)
+        metrics["train_seconds"] = time.time() - t0
+        print(f"[ERR] {e!r}", flush=True)
+        raise
+    finally:
+        _save()
+        print("[DONE]", json.dumps(metrics, indent=2), flush=True)
 
 
 def run_mlperf(args, data_dir: Path):
@@ -200,39 +219,55 @@ def run_mlperf(args, data_dir: Path):
     crit = nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
 
-    metrics = {"epochs": []}
+    metrics = {"status": "starting", "impl": "mlperf", "gpus": num_gpus,
+               "epochs": epochs, "max_steps": max_steps, "epoch_results": []}
+    _save = lambda: Path(args.results_dir, "metrics.json").write_text(json.dumps(metrics, indent=2))
+    _save()
+
     t0 = time.time()
     global_step = 0
-    for ep in range(epochs):
-        model.train()
-        for x, y in tl:
-            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            opt.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=device.type == "cuda"):
-                out = model(x); loss = crit(out, y)
-            scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
-            global_step += 1
-            if global_step % 20 == 0:
-                print(f"  step {global_step} loss={loss.item():.4f}")
+    try:
+        for ep in range(epochs):
+            model.train()
+            for x, y in tl:
+                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+                opt.zero_grad(set_to_none=True)
+                with torch.cuda.amp.autocast(enabled=device.type == "cuda"):
+                    out = model(x); loss = crit(out, y)
+                scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
+                global_step += 1
+                if global_step % 20 == 0:
+                    print(f"  step {global_step} loss={loss.item():.4f}", flush=True)
+                if max_steps > 0 and global_step >= max_steps:
+                    break
+            sched.step()
+            model.eval(); correct = total = 0
+            with torch.no_grad():
+                for x, y in vl:
+                    x, y = x.to(device), y.to(device)
+                    pred = model(x).argmax(1)
+                    correct += (pred == y).sum().item(); total += y.size(0)
+            acc = correct / max(total, 1)
+            print(f"[epoch {ep}] val_acc={acc:.4f}", flush=True)
+            metrics["epoch_results"].append({"epoch": ep, "val_acc": acc})
+            metrics["train_seconds"] = time.time() - t0
+            _save()  # incremental save per epoch
             if max_steps > 0 and global_step >= max_steps:
                 break
-        sched.step()
-        # eval
-        model.eval(); correct = total = 0
-        with torch.no_grad():
-            for x, y in vl:
-                x, y = x.to(device), y.to(device)
-                pred = model(x).argmax(1)
-                correct += (pred == y).sum().item(); total += y.size(0)
-        acc = correct / max(total, 1)
-        print(f"[epoch {ep}] val_acc={acc:.4f}")
-        metrics["epochs"].append({"epoch": ep, "val_acc": acc})
-        if max_steps > 0 and global_step >= max_steps:
-            break
-
-    metrics["train_seconds"] = time.time() - t0
-    Path(args.results_dir, "metrics.json").write_text(json.dumps(metrics, indent=2))
-    print("[DONE]", json.dumps(metrics, indent=2))
+        metrics["status"] = "completed"
+    except KeyboardInterrupt:
+        metrics["status"] = "interrupted"
+        print("[WARN] interrupted — saving partial metrics", flush=True)
+    except Exception as e:
+        metrics["status"] = "failed"
+        metrics["error"] = repr(e)
+        print(f"[ERR] {e!r}", flush=True)
+        raise
+    finally:
+        metrics["train_seconds"] = time.time() - t0
+        metrics["completed_steps"] = global_step
+        _save()
+        print("[DONE]", json.dumps(metrics, indent=2), flush=True)
 
 
 def main():

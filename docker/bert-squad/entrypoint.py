@@ -191,20 +191,38 @@ def run_train(args):
         data_collator=default_data_collator,
     )
 
-    t0 = time.time()
-    trainer.train()
-    train_s = time.time() - t0
+    scores = {"status": "starting", "impl": "train", "gpus": num_gpus,
+              "epochs": epochs, "max_steps": max_steps}
+    _save = lambda: Path(args.results_dir, "metrics.json").write_text(json.dumps(scores, indent=2))
+    _save()
 
-    # Eval with postprocessing
-    raw = trainer.predict(val_ds.remove_columns(["example_id", "offset_mapping"]))
-    preds = postprocess(val_raw, val_ds, raw.predictions)
-    metric = evaluate.load("squad_v2")
-    formatted_preds = [{"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in preds.items()]
-    refs = [{"id": ex["id"], "answers": ex["answers"]} for ex in val_raw]
-    scores = metric.compute(predictions=formatted_preds, references=refs)
-    scores["train_seconds"] = train_s
-    Path(args.results_dir, "metrics.json").write_text(json.dumps(scores, indent=2))
-    print("[DONE]", json.dumps(scores, indent=2))
+    t0 = time.time()
+    try:
+        trainer.train()
+        scores["status"] = "trained"
+        scores["train_seconds"] = time.time() - t0
+        _save()
+
+        raw = trainer.predict(val_ds.remove_columns(["example_id", "offset_mapping"]))
+        preds = postprocess(val_raw, val_ds, raw.predictions)
+        metric = evaluate.load("squad_v2")
+        formatted_preds = [{"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in preds.items()]
+        refs = [{"id": ex["id"], "answers": ex["answers"]} for ex in val_raw]
+        scores.update(metric.compute(predictions=formatted_preds, references=refs))
+        scores["status"] = "completed"
+    except KeyboardInterrupt:
+        scores["status"] = "interrupted"
+        scores["train_seconds"] = time.time() - t0
+        print("[WARN] interrupted — saving partial metrics", flush=True)
+    except Exception as e:
+        scores["status"] = "failed"
+        scores["error"] = repr(e)
+        scores["train_seconds"] = time.time() - t0
+        print(f"[ERR] {e!r}", flush=True)
+        raise
+    finally:
+        _save()
+        print("[DONE]", json.dumps(scores, indent=2), flush=True)
 
 
 def run_eval(args):
@@ -233,18 +251,33 @@ def run_eval(args):
     )
     trainer = Trainer(model=model, args=targs, tokenizer=tok, data_collator=default_data_collator)
 
-    t0 = time.time()
-    raw = trainer.predict(val_ds.remove_columns(["example_id", "offset_mapping"]))
-    eval_s = time.time() - t0
+    scores = {"status": "starting", "impl": "eval", "gpus": num_gpus, "model": args.eval_model}
+    _save = lambda: Path(args.results_dir, "metrics.json").write_text(json.dumps(scores, indent=2))
+    _save()
 
-    preds = postprocess(val_raw, val_ds, raw.predictions)
-    metric = evaluate.load("squad_v2")
-    formatted = [{"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in preds.items()]
-    refs = [{"id": ex["id"], "answers": ex["answers"]} for ex in val_raw]
-    scores = metric.compute(predictions=formatted, references=refs)
-    scores["eval_seconds"] = eval_s
-    Path(args.results_dir, "metrics.json").write_text(json.dumps(scores, indent=2))
-    print("[DONE]", json.dumps(scores, indent=2))
+    t0 = time.time()
+    try:
+        raw = trainer.predict(val_ds.remove_columns(["example_id", "offset_mapping"]))
+        scores["eval_seconds"] = time.time() - t0
+        preds = postprocess(val_raw, val_ds, raw.predictions)
+        metric = evaluate.load("squad_v2")
+        formatted = [{"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in preds.items()]
+        refs = [{"id": ex["id"], "answers": ex["answers"]} for ex in val_raw]
+        scores.update(metric.compute(predictions=formatted, references=refs))
+        scores["status"] = "completed"
+    except KeyboardInterrupt:
+        scores["status"] = "interrupted"
+        scores["eval_seconds"] = time.time() - t0
+        print("[WARN] interrupted", flush=True)
+    except Exception as e:
+        scores["status"] = "failed"
+        scores["error"] = repr(e)
+        scores["eval_seconds"] = time.time() - t0
+        print(f"[ERR] {e!r}", flush=True)
+        raise
+    finally:
+        _save()
+        print("[DONE]", json.dumps(scores, indent=2), flush=True)
 
 
 def main():
