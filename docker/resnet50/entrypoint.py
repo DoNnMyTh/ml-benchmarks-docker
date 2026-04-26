@@ -49,8 +49,16 @@ def resolve_data_dir(root: str, dataset: str) -> Path:
 
 
 def run_hf(args, data_dir: Path):
+    """HF microsoft/resnet-50 fine-tune via Trainer.
+
+    Uses torchvision.datasets.ImageFolder (os.scandir-based, fast even on
+    parallel/network filesystems) instead of HF `load_dataset("imagefolder", ...)`
+    which calls fsspec.glob("**/*") and hashes every path for the arrow cache —
+    that walk takes hours-to-days on slow FS for 1.3M ImageNet files.
+    """
     import torch
-    from datasets import load_dataset
+    from torch.utils.data import Dataset
+    from torchvision import datasets as tv_datasets
     from transformers import (
         AutoImageProcessor,
         AutoModelForImageClassification,
@@ -66,10 +74,18 @@ def run_hf(args, data_dir: Path):
     max_steps = args.max_steps if args.max_steps is not None else (200 if args.mode == "quick" else -1)
 
     print(f"[INFO] impl=hf dataset={args.dataset} gpus={num_gpus} bs/dev={per_device_bs} "
-          f"epochs={epochs} max_steps={max_steps}")
+          f"epochs={epochs} max_steps={max_steps}", flush=True)
 
-    ds = load_dataset("imagefolder", data_dir=str(data_dir))
-    labels = ds["train"].features["label"].names
+    val_dir = (data_dir / "val") if (data_dir / "val").is_dir() else (data_dir / "validation")
+    print(f"[INFO] indexing train tree at {data_dir/'train'} (torchvision.datasets.ImageFolder) ...",
+          flush=True)
+    tv_train = tv_datasets.ImageFolder(str(data_dir / "train"))
+    print(f"[INFO] train: {len(tv_train)} samples, {len(tv_train.classes)} classes", flush=True)
+    print(f"[INFO] indexing val tree at {val_dir} ...", flush=True)
+    tv_val = tv_datasets.ImageFolder(str(val_dir))
+    print(f"[INFO] val: {len(tv_val)} samples, {len(tv_val.classes)} classes", flush=True)
+
+    labels = tv_train.classes
     label2id = {c: i for i, c in enumerate(labels)}
     id2label = {i: c for c, i in label2id.items()}
 
@@ -83,12 +99,20 @@ def run_hf(args, data_dir: Path):
         ignore_mismatched_sizes=True,
     )
 
-    def transform(batch):
-        imgs = [img.convert("RGB") for img in batch["image"]]
-        batch["pixel_values"] = processor(imgs, return_tensors="pt")["pixel_values"]
-        return batch
+    class HFImageFolder(Dataset):
+        """Wrap a torchvision.ImageFolder so HF Trainer gets dict-shaped items."""
+        def __init__(self, tv_ds, processor):
+            self.tv = tv_ds
+            self.processor = processor
+        def __len__(self):
+            return len(self.tv)
+        def __getitem__(self, idx):
+            img, label = self.tv[idx]
+            pixel_values = self.processor(img.convert("RGB"), return_tensors="pt")["pixel_values"][0]
+            return {"pixel_values": pixel_values, "labels": label}
 
-    ds = ds.with_transform(transform)
+    train_ds = HFImageFolder(tv_train, processor)
+    eval_ds  = HFImageFolder(tv_val,   processor)
 
     acc = evaluate.load("accuracy")
 
@@ -118,8 +142,8 @@ def run_hf(args, data_dir: Path):
     trainer = Trainer(
         model=model,
         args=targs,
-        train_dataset=ds["train"],
-        eval_dataset=ds.get("validation", ds.get("val", ds["train"])),
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
         compute_metrics=compute_metrics,
     )
 
