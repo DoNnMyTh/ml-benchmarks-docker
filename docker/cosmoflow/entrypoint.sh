@@ -62,16 +62,14 @@ echo "[INFO] CosmoFlow: mode=$MODE gpus=$NGPU config=$CONFIG"
 if [[ "$NGPU" -gt 1 ]] && command -v mpirun >/dev/null 2>&1; then
   # Upstream train.py uses horovod. Without --distributed it stays solo (rank=0 size=1)
   # and every rank grabs all GPUs -> GPU0 fragments to a few hundred MB and OOMs.
-  # --rank-gpu binds each rank to its hvd.local_rank() GPU. Set
-  # CUDA_VISIBLE_DEVICES per local rank as belt-and-suspenders for environments where
-  # the upstream gpu-pinning hook misfires.
+  # --rank-gpu makes train.py call configure_session(gpu=hvd.local_rank()), which
+  # picks the right physical device. Do NOT also set CUDA_VISIBLE_DEVICES per rank:
+  # that hides all but one GPU, then configure_session(gpu=N) hits OOB
+  # ("GPU N unavailable, 1 visible").
   exec mpirun --allow-run-as-root -np "$NGPU" \
     --bind-to none -map-by slot \
     -x NCCL_DEBUG=WARN -x LD_LIBRARY_PATH -x PATH \
-    bash -c '
-      export CUDA_VISIBLE_DEVICES=${OMPI_COMM_WORLD_LOCAL_RANK:-0}
-      exec python train.py "$@"
-    ' -- "${COMMON_ARGS[@]}" --distributed --rank-gpu "${EXTRA[@]}"
+    python train.py "${COMMON_ARGS[@]}" --distributed --rank-gpu "${EXTRA[@]}"
 else
   exec python train.py "${COMMON_ARGS[@]}" "${EXTRA[@]}"
 fi
